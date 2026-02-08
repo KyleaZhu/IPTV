@@ -94,3 +94,4 @@ Decoder=2
 金牌综艺,http://hwrr.jx.chinamobile.com:8080/PLTV/88888888/224/3221225711/index.m3u8$name=IPV4$logo=https://testingcf.jsdelivr.net/gh/wanglindl/TVLogo@main/img/NewTV21.png$tvg=newtv金牌综艺
 武博世界,http://hwrr.jx.chinamobile.com:8080/PLTV/88888888/224/3221225656/index.m3u8$name=IPV4$logo=https://testingcf.jsdelivr.net/gh/wanglindl/TVLogo@main/img/NewTV14.png$tvg=newtv武博世界
 怡伴健康,http://hwrr.jx.chinamobile.com:8080/PLTV/88888888/224/3221225666/index.m3u8$name=IPV4$logo=https://testingcf.jsdelivr.net/gh/wanglindl/TVLogo@main/img/NewTV11.png$tvg=newtv怡伴健康
+
