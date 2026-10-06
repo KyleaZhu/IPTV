@@ -86,9 +86,9 @@ http://hwrr.jx.chinamobile.com:8080/PLTV/88888888/224/3221225601/index.m3u8?fmt=
 #EXTINF:-1 tvg-id="重庆卫视" tvg-logo="https://gcore.jsdelivr.net/gh/fanmingming/live@main/tv/重庆卫视.png" group-title="卫视频道",重庆卫视
 http://hwrr.jx.chinamobile.com:8080/PLTV/88888888/224/3221225612/index.m3u8?fmt=ts2hls
 #EXTINF:-1 tvg-id="黑龙江卫视" tvg-logo="https://gcore.jsdelivr.net/gh/fanmingming/live@main/tv/黑龙江卫视.png" group-title="卫视频道",黑龙江卫视
-http://hwrr.jx.chinamobile.com:8080/PLTV/88888888/224/3221226392/index.m3u8?fmt=ts2hls
-#EXTINF:-1 tvg-id="西藏卫视" tvg-logo="https://gcore.jsdelivr.net/gh/fanmingming/live@main/tv/西藏卫视.png" group-title="卫视频道",西藏卫视
 http://hwrr.jx.chinamobile.com:8080/PLTV/88888888/224/3221225586/index.m3u8?fmt=ts2hls
+#EXTINF:-1 tvg-id="西藏卫视" tvg-logo="https://gcore.jsdelivr.net/gh/fanmingming/live@main/tv/西藏卫视.png" group-title="卫视频道",西藏卫视
+http://hwrr.jx.chinamobile.com:8080/PLTV/88888888/224/3221226392/index.m3u8?fmt=ts2hls
 #EXTINF:-1 tvg-id="兵团卫视" tvg-logo="https://gcore.jsdelivr.net/gh/fanmingming/live@main/tv/兵团卫视.png" group-title="卫视频道",兵团卫视
 http://hwrr.jx.chinamobile.com:8080/PLTV/88888888/224/3221226395/index.m3u8?fmt=ts2hls
 #EXTINF:-1 tvg-id="新疆卫视" tvg-logo="https://gcore.jsdelivr.net/gh/fanmingming/live@main/tv/新疆卫视.png" group-title="卫视频道",新疆卫视
