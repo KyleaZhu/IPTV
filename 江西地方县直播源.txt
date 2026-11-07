@@ -1,0 +1,47 @@
+# 江西频道可用流列表
+# 检测时间：2026-11-07 19:26（北京时间）
+
+# ============ 上饶新闻综合  1920x1080@25 ============
+https://hls.quklive.com/live/play-sh-21.quklive.com/1758679893354090.m3u8?auth_key=2079617060-d88f59f738b64d69b58ac542b98edc52-0-af8b48e2d891ba488c9878f25460e7e5
+https://play-sh-21.quklive.com/live/1758679893354090.flv?auth_key=2079617060-61982b5b088e472ea3682f295b7bccca-0-7bd571df18c081ed6c8414a5fa763c7b
+rtmp://play-sh-21.quklive.com/live/1758679893354090?auth_key=2079617060-d10ea932df194c8d83b341d21c394bc3-0-7698f3fdcd4ed26fa309a145cc6b5eeb
+
+# ============ 上饶经济旅游  1920x1080@25 ============
+https://hls.quklive.com/live/play-sh-21.quklive.com/1758679936307088.m3u8?auth_key=2079617536-ebdadda3459e4ffbad4899a77d78551c-0-e123b1d1dd2ccc62a65941dda465eb1f
+https://play-sh-21.quklive.com/live/1758679936307088.flv?auth_key=2079617536-78626002c6bd4e99b0b6aa23332f9c3e-0-cd5503c6037855f37511b85d7ede074f
+rtmp://play-sh-21.quklive.com/live/1758679936307088?auth_key=2079617536-356c8b119c6e4ebd86e1f7e4a900500c-0-d490c1eb45e87bdadae3d82bb8b1f452
+
+# ============ 丰城新闻综合  1920x1080@25 ============
+https://play-sh13.quklive.com/live/1753663315049013.m3u8?auth_key=2079618218-43a81f8882264506923871b82faf8326-0-1b2ac19fffa1a603da6cb6e67161ac25
+https://play-sh13.quklive.com/live/1753663315049013.flv?auth_key=2079618218-e2b3f83053f040b7b28e5c19c81d6ec1-0-70c8fe43d40788061875835dd379182c
+rtmp://play-sh13.quklive.com/live/1753663315049013?auth_key=2079618218-b12b31f5c67f437ab0a059448b847e19-0-237674eb973cab266c47101019009317
+
+# ============ 定南综合  1280x720@25 ============
+https://play-sh13.quklive.com/live/1762136155495343.m3u8?auth_key=2079618705-65d76ec872e34ae4b20754350ddb966e-0-6ffe234c7afa525ab41523ce49baa6a3
+https://play-sh13.quklive.com/live/1762136155495343.flv?auth_key=2079618705-0fd5bca73b0b4a62b3f5242d1547db8d-0-2e111ba4528712606f533b714b28e02e
+rtmp://play-sh13.quklive.com/live/1762136155495343?auth_key=2079618705-5288b14645344305aeb44516922eb708-0-bff6f51150f581fdd53038aaf771e7f5
+
+# ============ 瑞金综合  1920x1080@50 ============
+https://play-a2.quklive.com/live/1760408109205119.m3u8
+https://play-a2.quklive.com/live/1760408109205119.flv
+rtmp://play-a2.quklive.com/live/1760408109205119
+
+# ============ 南康综合  1920x1080 ============
+https://play-a2.quklive.com/live/1758525653004384.m3u8
+https://play-a2.quklive.com/live/1758525653004384.flv
+rtmp://play-a2.quklive.com/live/1758525653004384
+
+# ============ 信丰综合  1920x1080 ============
+https://play-a2.quklive.com/live/1761874123034214.m3u8
+https://play-a2.quklive.com/live/1761874123034214.flv
+rtmp://play-a2.quklive.com/live/1761874123034214
+
+# ============ 玉山综合  1920x1080 ============
+https://play-a2.quklive.com/live/1744269699236128.m3u8
+https://play-a2.quklive.com/live/1744269699236128.flv
+rtmp://play-a2.quklive.com/live/1744269699236128
+
+# ============ 乐安综合  720x480 ============
+https://play-a2.quklive.com/live/1752744744088073.m3u8
+https://play-a2.quklive.com/live/1752744744088073.flv
+rtmp://play-a2.quklive.com/live/1752744744088073
