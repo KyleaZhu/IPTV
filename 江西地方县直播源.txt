@@ -45,3 +45,14 @@ rtmp://play-a2.quklive.com/live/1744269699236128
 https://play-a2.quklive.com/live/1752744744088073.m3u8
 https://play-a2.quklive.com/live/1752744744088073.flv
 rtmp://play-a2.quklive.com/live/1752744744088073
+
+# ============ 宜春一套·综合 ============
+https://liveds-yc.newsyc.com/wetef/sd/live.m3u8
+
+# ============ 宜春二套·法治民生 ============
+https://liveds-yc.newsyc.com/two/sd/live.m3u8
+
+# ============ 吉安一套 ============
+https://play.jarmt.cn/live/c3756d7171c348539cb9598232390460.m3u8
+# ============ 吉安综合广播 ============
+https://play.jarmt.cn/live/efa0f361aec14dfc9541b89be5973e63.m3u8
