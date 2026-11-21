@@ -12,3 +12,6 @@ desktop.ini
 *.tmp
 *.bak
 *.log
+
+# 第三方工具包，走 GitHub Releases 分发，不入主分支
+ysp-live-*.zip
