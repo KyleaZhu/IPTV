@@ -18,6 +18,8 @@ jstv.py — 江苏台 HLS 代理
 
 原理：清单需 txSecret 签名 + Referer，分片只校验 Referer ——
 播放器自带的 Referer 一定是它自己的，故分片必须经本进程转发。
+十个频道均为单层明文 TS 清单（无多码率、无加密、无 fMP4），故不做 master 挑选与
+EXT-X-KEY/MAP 改写（261125 逐频道核对）。
 """
 
 import argparse
@@ -35,6 +37,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 # ---------------------------------------------------------------- 配置
 
 PLAY_DOMAIN = "https://litchi-play-encrypted-site.jstv.com"
+UPSTREAM_HOST = urllib.parse.urlsplit(PLAY_DOMAIN).hostname   # 域名只在此处定义
 
 # 混淆串 slice(6, -3) 后 base64 解码 = '7cSrbhisZe2tF3N3ZGPN'
 # 密钥轮换时只改这一处：去 live.jstv.com 首页 JS 搜 txSecret 旁的字符串字面量
@@ -82,18 +85,18 @@ def sign_url(url, expire=300):
 
 
 def m3u8_body(text):
-    """校验确实是 m3u8（防挑战页/错误 JSON），返回去 BOM 的正文或 None。"""
+    """校验确实是 m3u8（防挑战页/错误 JSON），返回去 BOM 与前导空白的正文或 None。"""
     if not text:
         return None
-    t = text.lstrip("\ufeff").lstrip()
-    return text.lstrip("\ufeff") if t.startswith("#EXTM3U") else None
+    body = text.lstrip("\ufeff").lstrip()
+    return body if body.startswith("#EXTM3U") else None
 
 
 def upstream_ok(url):
     """https + 精确域名 + 目录前缀，挡掉 SSRF。"""
     u = urllib.parse.urlsplit(url)
     return (u.scheme == "https"
-            and u.hostname == "litchi-play-encrypted-site.jstv.com"
+            and u.hostname == UPSTREAM_HOST
             and u.path.startswith(ALLOWED_DIRS))
 
 
@@ -114,32 +117,13 @@ def resolve(base, rel):
 
 
 def rewrite_playlist(text, base):
-    """把分片 / EXT-X-KEY / EXT-X-MAP 全部改写成本进程地址。"""
+    """把每一行分片改写成本进程地址；注释行原样保留。"""
     out = []
     for raw in text.splitlines():
         line = raw.strip()
         if not line:
-            out.append(raw)
-            continue
-        if line.startswith("#"):
-            for key in ('URI="', ):
-                if key in line:
-                    pieces, i = [], 0
-                    while True:
-                        j = line.find(key, i)
-                        if j < 0:
-                            pieces.append(line[i:])
-                            break
-                        k = line.find('"', j + len(key))
-                        if k < 0:
-                            pieces.append(line[i:])
-                            break
-                        uri = line[j + len(key):k]
-                        pieces.append(line[i:j + len(key)])
-                        pieces.append(proxy_ref(resolve(base, uri)))
-                        pieces.append('"')
-                        i = k + 1
-                    line = "".join(pieces)
+            out.append("")
+        elif line.startswith("#"):
             out.append(line)
         else:
             out.append(proxy_ref(resolve(base, line)))
@@ -155,33 +139,12 @@ def open_upstream(url, timeout, extra_headers=None):
 
 
 def build_playlist(cid):
-    """取清单；多码率 master 则挑最高 BANDWIDTH 的变体再取一层。"""
-    name, en, directory = CHANNELS[cid]
-    master = sign_url(f"{PLAY_DOMAIN}{directory}{en}pro.m3u8")
-    with open_upstream(master, PLAYLIST_TIMEOUT) as r:
+    _, en, directory = CHANNELS[cid]
+    base = sign_url(f"{PLAY_DOMAIN}{directory}{en}pro.m3u8")
+    with open_upstream(base, PLAYLIST_TIMEOUT) as r:
         body = m3u8_body(r.read().decode("utf-8", "replace"))
     if body is None:
         raise RuntimeError("not a playlist")
-
-    base = master
-    if "#EXT-X-STREAM-INF" in body.upper():
-        best, best_bw, cur_bw = "", -1, 0
-        for raw in body.splitlines():
-            line = raw.strip()
-            if "BANDWIDTH=" in line:
-                try:
-                    cur_bw = int(line.split("BANDWIDTH=")[1].split(",")[0].split('"')[0])
-                except ValueError:
-                    cur_bw = 0
-                continue
-            if line and not line.startswith("#") and cur_bw >= best_bw:
-                best_bw, best = cur_bw, resolve(base, line)
-        if best:
-            base = sign_url(best)
-            with open_upstream(base, PLAYLIST_TIMEOUT) as r:
-                body = m3u8_body(r.read().decode("utf-8", "replace"))
-            if body is None:
-                raise RuntimeError("not a playlist")
     return rewrite_playlist(body, base)
 
 
@@ -189,7 +152,7 @@ def index_text():
     lines = ["# 江苏台 HLS 代理", ""]
     for cid, (name, en, _) in CHANNELS.items():
         lines.append(f"{cid:>2}  {name:<10} /{cid:<3} /{en}")
-    lines += ["", "把 /2 或 /2.m3u8 填进播放器即可。"]
+    lines += ["", "把 /1 或 /1.m3u8 填进播放器即可。"]
     return "\n".join(lines) + "\n"
 
 
@@ -207,61 +170,71 @@ class Handler(BaseHTTPRequestHandler):
         sys.stderr.write("[jstv] %s\n" % (fmt % args))
 
     def do_GET(self):
-        self._route(send_body=True)
+        self._route()
 
     def do_HEAD(self):
-        self._route(send_body=False)
+        self._route()
 
-    # -- 响应helper
+    # -- 响应
+
+    def _begin(self, status, headers):
+        """发状态行与响应头；置标志位，避免异常处理再发一次头污染流。"""
+        self.send_response(status)
+        for name, value in headers.items():
+            self.send_header(name, value)
+        self.end_headers()
+        self.headers_sent = True
 
     def _text(self, body, status=200):
         data = body.encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "text/plain; charset=utf-8")
-        self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
+        self._begin(status, {
+            "Content-Type": "text/plain; charset=utf-8",
+            "Content-Length": str(len(data)),
+            "Cache-Control": "no-store",
+        })
         if self.command != "HEAD":
             self.wfile.write(data)
 
     def _playlist(self, body):
         data = body.encode("utf-8")
-        self.send_response(200)
-        self.send_header("Content-Type", "application/vnd.apple.mpegurl")
-        self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.end_headers()
+        self._begin(200, {
+            "Content-Type": "application/vnd.apple.mpegurl",
+            "Content-Length": str(len(data)),
+            "Cache-Control": "no-store",
+            "Access-Control-Allow-Origin": "*",
+        })
         if self.command != "HEAD":
             self.wfile.write(data)
 
     # -- 路由
 
-    def _route(self, send_body=True):
+    def _route(self):
+        self.headers_sent = False
         try:
-            parsed = urllib.parse.urlsplit(self.path)
-            path = parsed.path.rstrip("/") or "/"
+            path = urllib.parse.urlsplit(self.path).path.rstrip("/") or "/"
 
             if path == "/favicon.ico":
-                self.send_response(204)
-                self.end_headers()
+                self._begin(204, {})
                 return
 
             if path.startswith("/s/"):
-                return self._segment(path[3:], send_body)
+                return self._segment(path[3:])
 
             if path == "/":
                 return self._text(index_text())
 
-            m = path.lstrip("/")
-            if m.endswith(".m3u8"):
-                m = m[:-5]
-            return self._playlist_route(m)
+            key = path.lstrip("/")
+            if key.endswith(".m3u8"):
+                key = key[:-5]
+            return self._playlist_route(key)
 
         except (BrokenPipeError, ConnectionResetError):
             self.close_connection = True
         except Exception as exc:                     # noqa: BLE001
             self.log_error("处理 %s 失败: %r", self.path, exc)
+            if self.headers_sent:                    # 已经在传流，只能断开，不能再写状态行
+                self.close_connection = True
+                return
             try:
                 self._text("500 internal error", 500)
             except Exception:
@@ -280,7 +253,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._text("upstream unreachable", 502)
         self._playlist(body)
 
-    def _segment(self, encoded, send_body=True):
+    def _segment(self, encoded):
         try:
             abs_url = unb64u(encoded)
         except Exception:                            # noqa: BLE001
@@ -302,32 +275,25 @@ class Handler(BaseHTTPRequestHandler):
             return self._text("upstream unreachable", 502)
 
         with resp:
-            ctype = resp.headers.get("Content-Type", "application/octet-stream")
-
-            # 上游偶尔嵌一层子清单（.m3u8），仍要改写
-            if "mpegurl" in ctype.lower() or urllib.parse.urlsplit(abs_url).path.endswith(".m3u8"):
-                body = m3u8_body(resp.read().decode("utf-8", "replace"))
-                if body is None:
-                    return self._text("upstream not playlist", 502)
-                return self._playlist(rewrite_playlist(body, abs_url))
-
+            headers = {
+                "Content-Type": resp.headers.get("Content-Type", "application/octet-stream"),
+                "Cache-Control": "public, max-age=300",
+                "Access-Control-Allow-Origin": "*",
+            }
             length = resp.headers.get("Content-Length")
-            self.send_response(resp.status)
-            self.send_header("Content-Type", ctype)
             if length:
-                self.send_header("Content-Length", length)
+                headers["Content-Length"] = length
             else:
-                self.send_header("Connection", "close")
+                headers["Connection"] = "close"
                 self.close_connection = True
-            self.send_header("Cache-Control", "public, max-age=300")
-            self.send_header("Access-Control-Allow-Origin", "*")
             if resp.status == 206:
-                self.send_header("Accept-Ranges", "bytes")
+                headers["Accept-Ranges"] = "bytes"
                 cr = resp.headers.get("Content-Range")
                 if cr:
-                    self.send_header("Content-Range", cr)
-            self.end_headers()
-            if send_body and self.command != "HEAD":
+                    headers["Content-Range"] = cr
+
+            self._begin(resp.status, headers)
+            if self.command != "HEAD":
                 shutil.copyfileobj(resp, self.wfile, 64 * 1024)
 
 
