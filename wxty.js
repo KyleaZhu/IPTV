@@ -3,13 +3,13 @@
  * PHP 原版出处: https://t.me/iptvorganization
  *
  * 已绑定自定义域: wxty.xdu.qzz.io —— 各台直播链接（?id= 取值来自 CHANNEL_MAP）:
- *  - 东方卫视          https://wxty.xdu.qzz.io/?id=dfws
+ *  - 东方卫视			https://wxty.xdu.qzz.io/?id=dfws
  *  - 新闻综合			https://wxty.xdu.qzz.io/?id=xwzh
- *  - 上海都市          https://wxty.xdu.qzz.io/?id=shds
- *  - 第一财经          https://wxty.xdu.qzz.io/?id=dycj
- *  - 哈哈炫动          https://wxty.xdu.qzz.io/?id=hhxd
- *  - 五星体育(默认)    https://wxty.xdu.qzz.io/?id=wxty   或 https://wxty.xdu.qzz.io/
- *  - 魔都眼            https://wxty.xdu.qzz.io/?id=mdy
+ *  - 都市频道			https://wxty.xdu.qzz.io/?id=dspd
+ *  - 第一财经			https://wxty.xdu.qzz.io/?id=dycj
+ *  - 哈哈炫动			https://wxty.xdu.qzz.io/?id=hhxd
+ *  - 五星体育(默认)	https://wxty.xdu.qzz.io/?id=wxty   或 https://wxty.xdu.qzz.io/
+ *  - 魔都眼			https://wxty.xdu.qzz.io/?id=mdy
  *  - 新纪实			https://wxty.xdu.qzz.io/?id=xjs
  */
 
@@ -24,7 +24,7 @@ const DONOR_SCAN_DAYS    = 7;
 const DONOR_MAX_DETAIL   = 20;  // 子请求上限保护
 
 const CHANNEL_MAP = {
-    dfws: 1, xwzh: 2, shds: 4, dycj: 5,
+    dfws: 1, xwzh: 2, dspd: 4, dycj: 5,
     hhxd: 9, wxty: 10, mdy: 11, xjs: 12,
 };
 
@@ -534,7 +534,7 @@ async function getLiveUrl(channelId, forceRefresh = false) {
     }
     const found = await fetchPlayAddress(channelId);
     if (!found) {
-        const reason = 'address-failed: 未取到可用播放地址(is_shield 屏蔽且无供体)';
+        const reason = 'address-failed: 未取到可用播放地址';
         kkFail(reason);
         return { url: null, cacheHit: false, meta: meta, failReason: reason };
     }
@@ -653,7 +653,7 @@ export default {
 
         // 频道校验
         const channelId = CHANNEL_MAP[id];
-        if (typeof channelId !== 'number') { // 顺带挡掉 constructor / __proto__ 这类原型链键
+        if (typeof channelId !== 'number') {
             return new Response('无效频道ID', { status: 400 });
         }
 
