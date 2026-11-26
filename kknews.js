@@ -1,41 +1,34 @@
 /**
  * wxty.php → Cloudflare Worker 移植版
- * 出处（PHP 原版）: https://t.me/iptvorganization
- * 差异说明：
- *  - 缓存层用 Cache API（单数据中心内持久，不占 KV 配额，无需绑定任何资源）
- *  - 供体扫描的 detail 调用加了上限防 Workers 子请求超限
- *  - 动态嗅探前端最新版本号并缓存（对齐 PHP 版 kankanApiVersion）
- *  - 其余逻辑（签名 / RSA / 三级地址回退 / m3u8 拍平 / 参数）与 PHP 版一一对应
+ * PHP 原版出处: https://t.me/iptvorganization
  *
  * 已绑定自定义域: wxty.xdu.qzz.io —— 各台直播链接（?id= 取值来自 CHANNEL_MAP）:
  *  - 东方卫视          https://wxty.xdu.qzz.io/?id=dfws
- *  - 上海新闻综合      https://wxty.xdu.qzz.io/?id=shxwzh
+ *  - 新闻综合			https://wxty.xdu.qzz.io/?id=xwzh
  *  - 上海都市          https://wxty.xdu.qzz.io/?id=shds
  *  - 第一财经          https://wxty.xdu.qzz.io/?id=dycj
  *  - 哈哈炫动          https://wxty.xdu.qzz.io/?id=hhxd
  *  - 五星体育(默认)    https://wxty.xdu.qzz.io/?id=wxty   或 https://wxty.xdu.qzz.io/
- *  - 11频道            https://wxty.xdu.qzz.io/?id=mdy
- *  - 纪实人文          https://wxty.xdu.qzz.io/?id=jsrw
+ *  - 魔都眼            https://wxty.xdu.qzz.io/?id=mdy
+ *  - 新纪实			https://wxty.xdu.qzz.io/?id=xjs
  */
 
 const KANKAN_API_BASE = 'https://kapi.kankanews.com';
-const KANKAN_API_VERSION = '2.45.2';
+const KANKAN_API_VERSION = '2.48.0';
 const KANKAN_API_SECRET = '28c8edde3d61a0411511d3b1866f0636';
 const KANKAN_UA = 'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.5845.97 Safari/537.36 SE 2.X MetaSr 1.0';
 
-const FALLBACK_LIVE_URL = 'https://cdn.jsdelivr.net/gh/jkwu5472/first/media.m3u8';
-
-const LIVE_URL_CACHE_TTL = 600; // 秒
+const LIVE_URL_CACHE_TTL = 600;
 const LIVE_URL_MIN_LEFT  = 90;  // 地址自身剩余有效期下限
 const DONOR_SCAN_DAYS    = 7;
 const DONOR_MAX_DETAIL   = 20;  // 子请求上限保护
 
 const CHANNEL_MAP = {
-    dfws: 1, shxwzh: 2, shds: 4, dycj: 5,
-    hhxd: 9, wxty: 10, mdy: 11, jsrw: 12,
+    dfws: 1, xwzh: 2, shds: 4, dycj: 5,
+    hhxd: 9, wxty: 10, mdy: 11, xjs: 12,
 };
 
-/* ---------------- MD5（Web Crypto 无 MD5，内置纯 JS 实现，等价 PHP md5()） ---------------- */
+/* ---------------- MD5 ---------------- */
 
 function md5(str) {
     const msg = new TextEncoder().encode(str);
@@ -85,7 +78,7 @@ function md5(str) {
     return [...new Uint8Array(out.buffer)].map(x => x.toString(16).padStart(2, '0')).join('');
 }
 
-/* ---------------- RSA 公钥还原（对应 PHP rsaDecrypt 系列） ---------------- */
+/* ---------------- RSA 公钥还原 ---------------- */
 
 const KANKAN_PEM = "-----BEGIN PUBLIC KEY-----\n"
     + "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDP5hzPUW5RFeE2xBT1ERB3hHZI\n"
@@ -105,7 +98,7 @@ function bytesToHex(u8) {
     return s;
 }
 
-// 简化版 DER 整数扫描器（与 PHP rsaAsn1Integers 相同，只认 INTEGER 标签）
+// 简化版 DER 整数扫描器
 function rsaAsn1Integers(der) {
     const ints = [];
     const len = der.length;
@@ -173,16 +166,18 @@ function rsaDecrypt(str) {
     try {
         enc = Uint8Array.from(atob(str), ch => ch.charCodeAt(0));
     } catch (e) { return null; }
-    if (enc.length < 128) return null;
+    if (enc.length < 128 || enc.length % 128 !== 0) return null;
     const { n, e } = rsaKey();
     let result = '';
     for (let i = 0; i + 128 <= enc.length; i += 128) {
-        result += rsaPublicDecryptChunk(enc.slice(i, i + 128), n, e);
+        const part = rsaPublicDecryptChunk(enc.slice(i, i + 128), n, e);
+        if (part === '') return null;
+        result += part;
     }
     return result !== '' ? result : null;
 }
 
-/* ---------------- 杂项工具（对应 PHP getnonce/getuuid/stableUuid） ---------------- */
+/* ---------------- 杂项工具 ---------------- */
 
 function getNonce(len = 8) {
     const alphabet = '0123456789abcdefghijklmnopqrstuvwxyz';
@@ -204,7 +199,7 @@ function getUuid(len = 21) {
 const CACHE = caches.default;
 const UUID_CACHE_KEY = 'https://kk-wxty.internal/cache/uuid';
 const SITE_VERSION_CACHE_KEY = 'https://kk-wxty.internal/cache/site-version';
-const SITE_VERSION_CACHE_TTL = 21600; // 6 小时 (对应 PHP 版 site-version 缓存时间)
+const SITE_VERSION_CACHE_TTL = 21600;
 
 async function getKankanApiVersion(forceRefresh = false) {
     if (!forceRefresh) {
@@ -217,17 +212,20 @@ async function getKankanApiVersion(forceRefresh = false) {
         } catch (e) {}
     }
     let detected = '';
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 8000);
     try {
         const resp = await fetch('https://live.kankanews.com/huikan?id=10', {
             headers: { 'User-Agent': KANKAN_UA },
             cf: { cacheTtl: 0 },
+            signal: ac.signal,
         });
         if (resp.status === 200) {
             const html = await resp.text();
             const m = html.match(/v(\d+\.\d+\.\d+)\.js/);
             if (m) detected = m[1];
         }
-    } catch (e) {}
+    } catch (e) {} finally { clearTimeout(timer); }
 
     if (detected !== '') {
         try {
@@ -250,11 +248,14 @@ function liveUrlCacheKey(channelId) {
     return 'https://kk-wxty.internal/cache/live-url/channel-' + channelId + '.json';
 }
 
-// stableUuid：文件缓存 → Cache API（同数据中心内持久）
+// stableUuid：文件缓存 → Cache API
 async function getStableUuid() {
-    const hit = await CACHE.match(UUID_CACHE_KEY);
-    let cur = hit ? (await hit.text()).trim() : '';
-    if (cur === '' || /^[A-Za-z0-9_-]{16,32}$/.test(cur) === false) {
+    let cur = '';
+    try {
+        const hit = await CACHE.match(UUID_CACHE_KEY);
+        cur = hit ? (await hit.text()).trim() : '';
+    } catch (e) { /* 读不到就用临时值 */ }
+    if (/^[A-Za-z0-9_-]{16,32}$/.test(cur) === false) {
         cur = getUuid(21);
         try {
             await CACHE.put(UUID_CACHE_KEY, new Response(cur, {
@@ -265,18 +266,9 @@ async function getStableUuid() {
     return cur;
 }
 
-function clientIpOf(request) {
-    // 与 PHP 相同：优先信任 XFF，其次 Client-IP，兜底 cf-connecting-ip
-    const xff = request.headers.get('X-Forwarded-For');
-    if (xff) return xff.split(',')[0].trim();
-    const cip = request.headers.get('Client-IP');
-    if (cip) return cip;
-    return request.headers.get('CF-Connecting-IP') || '';
-}
+/* ---------------- 沪 API 封装 ---------------- */
 
-/* ---------------- 沪 API 封装（对应 PHP kankanApiGet） ---------------- */
-
-async function kankanApiGet(path, params = {}, ip = '') {
+async function kankanApiGet(path, params = {}) {
     const t = Math.floor(Date.now() / 1000);
     const nonce = getNonce(8);
     const uuid = await getStableUuid();
@@ -289,7 +281,7 @@ async function kankanApiGet(path, params = {}, ip = '') {
         timestamp: t,
         version: version,
     });
-    const keys = Object.keys(all).sort(); // ASCII 键位下与 PHP ksort 等价
+    const keys = Object.keys(all).sort();
     let signStr = '';
     for (const k of keys) {
         let v = all[k];
@@ -312,31 +304,29 @@ async function kankanApiGet(path, params = {}, ip = '') {
         'Referer': 'https://live.kankanews.com/',
         'User-Agent': KANKAN_UA,
     };
-    if (ip !== '') {
-        headers['X-Forwarded-For'] = ip;
-        headers['Client-Ip'] = ip;
-    }
 
     const url = KANKAN_API_BASE + path + '?' + new URLSearchParams(params).toString();
-    let resp;
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 10000);
     try {
-        resp = await fetch(url, { headers, cf: { cacheTtl: 0 } });
-    } catch (e) {
-        return null;
-    }
-    const text = await resp.text();
-    try {
-        const data = JSON.parse(text);
+        const resp = await fetch(url, { headers, cf: { cacheTtl: 0 }, signal: ac.signal });
+        if (resp.status !== 200) {
+            try { await resp.body?.cancel(); } catch (e) { /* 丢弃响应体 */ }
+            return null;
+        }
+        const data = JSON.parse(await resp.text());
         return data && typeof data === 'object' ? data : null;
     } catch (e) {
         return null;
+    } finally {
+        clearTimeout(timer);
     }
 }
 
-/* ---------------- 直播地址三级策略（对应 PHP fetchPlayAddress 等） ---------------- */
+/* ---------------- 直播地址三级策略 ---------------- */
 
 function shanghaiDate(d) {
-    // 等价 PHP：date('Y-m-d', ts) with Asia/Shanghai
+    // date('Y-m-d', ts) with Asia/Shanghai
     return new Intl.DateTimeFormat('en-CA', {
         timeZone: 'Asia/Shanghai',
         year: 'numeric', month: '2-digit', day: '2-digit',
@@ -356,24 +346,24 @@ function pickProgramAddress(programDetail) {
     return null;
 }
 
-async function fetchPrograms(channelId, date, ip) {
-    const res = await kankanApiGet('/content/pc/tv/programs', { channel_id: channelId, date: date }, ip);
+async function fetchPrograms(channelId, date) {
+    const res = await kankanApiGet('/content/pc/tv/programs', { channel_id: channelId, date: date });
     return res?.result?.programs ?? [];
 }
 
-async function fetchProgramDetail(programId, ip) {
-    return kankanApiGet('/content/pc/tv/program/detail', { channel_program_id: programId }, ip);
+async function fetchProgramDetail(programId) {
+    return kankanApiGet('/content/pc/tv/program/detail', { channel_program_id: programId });
 }
 
-async function fetchPlayAddress(channelId, ip) {
-    const detail = await kankanApiGet('/content/pc/tv/channel/detail', { channel_id: channelId }, ip);
+async function fetchPlayAddress(channelId) {
+    const detail = await kankanApiGet('/content/pc/tv/channel/detail', { channel_id: channelId });
     const chanLive = String(detail?.result?.live_address ?? '');
     if (chanLive !== '') {
         return { addr: chanLive, kind: 'live', source: 'channel' };
     }
 
     const today = shanghaiDate(new Date());
-    const list = await fetchPrograms(channelId, today, ip);
+    const list = await fetchPrograms(channelId, today);
     const now = Math.floor(Date.now() / 1000);
     let current = null;
     for (const p of list) {
@@ -382,14 +372,14 @@ async function fetchPlayAddress(channelId, ip) {
         if (s <= now && now < e) { current = p; break; }
     }
     if (current) {
-        const pd = await fetchProgramDetail(current.id, ip);
+        const pd = await fetchProgramDetail(current.id);
         const pick = pickProgramAddress(pd);
         if (pick) {
             return { addr: pick.addr, kind: pick.kind, source: 'current-program', program: current };
         }
     }
 
-    let fallbackShift; // 供体兜底（等价 PHP $fallbackShift）
+    let fallbackShift; // 供体兜底
     let detailCount = 0;
     for (let off = 0; off < DONOR_SCAN_DAYS; off++) {
         const date = shanghaiDaysAgo(off);
@@ -397,7 +387,7 @@ async function fetchPlayAddress(channelId, ip) {
         if (off === 0 && list.length) {
             dayList = list;
         } else {
-            dayList = await fetchPrograms(channelId, date, ip);
+            dayList = await fetchPrograms(channelId, date);
         }
         if (!dayList.length) continue;
 
@@ -407,7 +397,7 @@ async function fetchPlayAddress(channelId, ip) {
             if (reviewable) candidates.push(p);
         }
 
-        // 节目名含「体育」优先（等价 PHP usort）
+        // 节目名含「体育」优先
         candidates.sort((a, b) => {
             const sa = String(a?.name ?? '').includes('体育') ? 0 : 1;
             const sb = String(b?.name ?? '').includes('体育') ? 0 : 1;
@@ -415,9 +405,9 @@ async function fetchPlayAddress(channelId, ip) {
         });
 
         for (const p of candidates) {
-            if (detailCount >= DONOR_MAX_DETAIL) break; // 子请求保护（移植新增）
+            if (detailCount >= DONOR_MAX_DETAIL) break;
             detailCount++;
-            const pd = await fetchProgramDetail(p.id, ip);
+            const pd = await fetchProgramDetail(p.id);
             const pick = pickProgramAddress(pd);
             if (pick && pick.kind === 'shift') {
                 return { addr: pick.addr, kind: 'shift', source: 'donor', program: p };
@@ -433,7 +423,7 @@ async function fetchPlayAddress(channelId, ip) {
     return null;
 }
 
-/* ---------------- URL 时效与规整（对应 PHP urlExpiry / normalizeLiveUrl） ---------------- */
+/* ---------------- URL 时效与规整 ---------------- */
 
 function b64UrlDecode(s) {
     s = s.replace(/-/g, '+').replace(/_/g, '/');
@@ -492,7 +482,7 @@ function normalizeLiveUrl(url) {
     return out;
 }
 
-/* ---------------- 直播地址缓存（对应 PHP readCachedLiveUrl 等，改用 Cache API） ---------------- */
+/* ---------------- 直播地址缓存 ---------------- */
 
 async function readCachedLiveUrl(channelId) {
     let raw = '';
@@ -522,7 +512,6 @@ async function writeCachedLiveUrl(channelId, url) {
     if (exp <= 0) exp = now + 300;
     const payload = JSON.stringify({ url: url, exp: exp });
     try {
-        // Cache API 的 TTL 由 Cache-Control 控制；TTL 600 对应 PHP 的 LIVE_URL_CACHE_TTL
         await CACHE.put(liveUrlCacheKey(channelId), new Response(payload, {
             headers: { 'Cache-Control': 'max-age=' + LIVE_URL_CACHE_TTL },
         }));
@@ -533,7 +522,7 @@ async function clearCachedLiveUrl(channelId) {
     try { await CACHE.delete(liveUrlCacheKey(channelId)); } catch (e) { /* ignore */ }
 }
 
-async function getLiveUrl(channelId, forceRefresh = false, ip = '') {
+async function getLiveUrl(channelId, forceRefresh = false) {
     const meta = { source: 'cache' };
     let cacheHit = false;
     if (!forceRefresh) {
@@ -543,48 +532,43 @@ async function getLiveUrl(channelId, forceRefresh = false, ip = '') {
             return { url: cached, cacheHit: cacheHit, meta: meta };
         }
     }
-    const found = await fetchPlayAddress(channelId, ip);
+    const found = await fetchPlayAddress(channelId);
     if (!found) {
-        kkFail('address-failed: 未取到可用播放地址(is_shield 屏蔽且无供体)');
-        return { url: null, cacheHit: false, meta: meta };
+        const reason = 'address-failed: 未取到可用播放地址(is_shield 屏蔽且无供体)';
+        kkFail(reason);
+        return { url: null, cacheHit: false, meta: meta, failReason: reason };
     }
     const plain = rsaDecrypt(found.addr);
     if (plain === null) {
-        kkFail('decrypt-failed: RSA 解密失败 (source=' + found.source + ')');
-        return { url: null, cacheHit: false, meta: meta };
+        const reason = 'decrypt-failed: RSA 解密失败 (source=' + found.source + ')';
+        kkFail(reason);
+        return { url: null, cacheHit: false, meta: meta, failReason: reason };
     }
     const liveUrl = normalizeLiveUrl(plain);
     if (!liveUrl) {
-        kkFail('bad-url: 解密结果不是合法 URL');
-        return { url: null, cacheHit: false, meta: meta };
+        const reason = 'bad-url: 解密结果不是合法 URL';
+        kkFail(reason);
+        return { url: null, cacheHit: false, meta: meta, failReason: reason };
     }
     meta.source = found.source;
-    meta.kind = found.kind;
-    meta.program = found.program?.name ?? null;
-    meta.program_id = found.program?.id ?? null;
-    meta.shift_url = plain;
     await writeCachedLiveUrl(channelId, liveUrl);
     return { url: liveUrl, cacheHit: false, meta: meta };
 }
 
-let lastFailReason = 'unknown';
-
 function kkFail(reason) {
-    lastFailReason = reason;
     console.log('[wxty] ' + reason);
 }
 
-function redirectToFallback(reason = '', extraHeaders = {}) {
-    if (reason === '') reason = lastFailReason || 'unknown';
-    console.log('[wxty] fallback -> ' + FALLBACK_LIVE_URL + ' (reason: ' + reason + ')');
-    const h = new Headers(extraHeaders);
-    h.set('X-Fallback-Reason', reason.replace(/[^A-Za-z0-9_\-]/g, ''));
+function failResponse(reason = '') {
+    if (reason === '') reason = 'unknown';
+    console.log('[wxty] fail -> ' + reason);
+    const h = new Headers();
+    h.set('X-Fail-Reason', reason.split(':')[0].replace(/[^A-Za-z0-9_\-]/g, ''));
     h.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-    h.set('Location', FALLBACK_LIVE_URL);
-    return new Response(null, { status: 302, headers: h });
+    return new Response('取流失败: ' + reason, { status: 502, headers: h });
 }
 
-/* ---------------- m3u8 拍平（对应 PHP fetchContent / toAbsoluteUrl / getFlatM3u8） ---------------- */
+/* ---------------- m3u8 拍平 ---------------- */
 
 const KANKAN_FETCH_HEADERS = {
     'User-Agent': KANKAN_UA,
@@ -596,13 +580,15 @@ const KANKAN_FETCH_HEADERS = {
 
 async function fetchContent(url, timeoutMs = 15000) {
     for (let attempt = 0; attempt < 2; attempt++) {
+        const ac = new AbortController();
+        const timer = setTimeout(() => ac.abort(), timeoutMs);
         try {
-            const resp = await fetch(url, { headers: KANKAN_FETCH_HEADERS, cf: { cacheTtl: 0 } });
+            const resp = await fetch(url, { headers: KANKAN_FETCH_HEADERS, cf: { cacheTtl: 0 }, signal: ac.signal });
             if (resp.status === 200) {
                 const data = await resp.text();
                 if (data !== '') return data;
             }
-        } catch (e) { /* 出错重试一次 */ }
+        } catch (e) { /* 超时或出错，重试一次 */ } finally { clearTimeout(timer); }
     }
     return null;
 }
@@ -658,7 +644,7 @@ async function getFlatM3u8(url, depth = 0) {
     return joined.indexOf('#EXTINF') !== -1 ? joined : '';
 }
 
-/* ---------------- 主处理入口（对应 PHP 底部主流程） ---------------- */
+/* ---------------- 主处理入口 ---------------- */
 
 export default {
     async fetch(request) {
@@ -667,112 +653,28 @@ export default {
 
         // 频道校验
         const channelId = CHANNEL_MAP[id];
-        if (channelId === undefined) {
+        if (typeof channelId !== 'number') { // 顺带挡掉 constructor / __proto__ 这类原型链键
             return new Response('无效频道ID', { status: 400 });
-        }
-
-        // ?ts_url 分支：分片中转（PHP 版同款，无鉴权、直连透传）
-        const tsUrlParam = u.searchParams.get('ts_url');
-        if (tsUrlParam !== null) {
-            const tsUrl = tsUrlParam; // searchParams 已解码（等价 PHP urldecode 后的效果）
-            if (!/^https?:\/\//i.test(tsUrl)) {
-                return new Response('Invalid url', { status: 400 });
-            }
-            let pathname = '';
-            try { pathname = new URL(tsUrl).pathname; } catch (e) { pathname = ''; }
-            const filename = pathname.split('/').pop() ?? '';
-            if (!/^[A-Za-z0-9][A-Za-z0-9._-]*\.(ts|m4s|mp4|aac|key|vtt)$/.test(filename)
-                || filename.indexOf('..') !== -1) {
-                return new Response('Invalid filename', { status: 400 });
-            }
-            // PHP 版落到本地 ts_cache 再回放；Workers 用 Cache API 缓存分片本体
-            const cacheKey = new Request('https://kk-wxty.internal/ts/' + encodeURIComponent(tsUrl));
-            const cached = await CACHE.match(cacheKey);
-            if (cached) {
-                return new Response(cached.body, {
-                    headers: {
-                        'Content-Type': 'video/MP2T',
-                        'Cache-Control': 'max-age=86400',
-                    },
-                });
-            }
-            let resp;
-            try {
-                resp = await fetch(tsUrl, {
-                    headers: Object.assign({}, KANKAN_FETCH_HEADERS, { 'Connection': 'keep-alive' }),
-                    cf: { cacheTtl: 0 },
-                });
-            } catch (e) {
-                resp = null;
-            }
-            if (!resp || resp.status !== 200) {
-                if (resp && resp.body && resp.body.cancel) { try { resp.body.cancel(); } catch (e) {} }
-                return new Response('无法获取 TS 分片', { status: 502 });
-            }
-            // 流式透传 + 写入 Cache API 方便复用（等价 PHP 的 ts_cache 落盘）
-            const body = resp.body;
-            const h = new Headers({
-                'Content-Type': 'video/MP2T',
-                'Cache-Control': 'max-age=86400',
-            });
-            const out = new Response(body, { headers: h });
-            if (out.body) {
-                const [a, b] = out.body.tee();
-                try {
-                    await CACHE.put(cacheKey, new Response(a, { headers: h }));
-                } catch (e) { /* 忽略缓存写失败 */ }
-                return new Response(b, { headers: h });
-            }
-            return out;
         }
 
         // 直播地址
         const forceRefresh = u.searchParams.has('refresh') && u.searchParams.get('refresh') !== '0';
-        const ip = clientIpOf(request);
-        let cacheHit = false;
-        let meta = null;
-        let liveUrlEl = await getLiveUrl(channelId, forceRefresh, ip);
-        let liveUrl = liveUrlEl.url;
-        cacheHit = liveUrlEl.cacheHit;
-        meta = liveUrlEl.meta;
+        let liveUrlEl = await getLiveUrl(channelId, forceRefresh);
+        let { url: liveUrl, cacheHit, meta } = liveUrlEl;
         if (!liveUrl) {
-            return redirectToFallback();
+            return failResponse(liveUrlEl.failReason || '');
         }
 
         let finalM3u8 = await getFlatM3u8(liveUrl);
         if (finalM3u8 === '') {
             await clearCachedLiveUrl(channelId);
             await clearCachedSiteVersion();
-            liveUrlEl = await getLiveUrl(channelId, true, ip);
-            liveUrl = liveUrlEl.url;
-            cacheHit = liveUrlEl.cacheHit;
-            meta = liveUrlEl.meta;
+            liveUrlEl = await getLiveUrl(channelId, true);
+            ({ url: liveUrl, cacheHit, meta } = liveUrlEl);
             if (liveUrl) finalM3u8 = await getFlatM3u8(liveUrl);
         }
         if (finalM3u8 === '') {
-            return redirectToFallback('playlist-fetch-failed: 拉取播放列表失败');
-        }
-
-        // ?info 调试接口
-        if (u.searchParams.has('info')) {
-            const now = Math.floor(Date.now() / 1000);
-            const info = {
-                id: id,
-                channel_id: channelId,
-                api_version: await getKankanApiVersion(),
-                source: meta?.source ?? null,
-                kind: meta?.kind ?? null,
-                program: meta?.program ?? null,
-                program_id: meta?.program_id ?? null,
-                live_url: liveUrl,
-                cache: cacheHit ? 'HIT' : 'MISS',
-                expires_in: Math.max(0, urlExpiry(liveUrl) - now),
-                segment_count: (finalM3u8.match(/#EXTINF/g) ?? []).length,
-                fallback_url: FALLBACK_LIVE_URL,
-            };
-            return new Response(JSON.stringify(info, null, 4), {
-                headers: { 'Content-Type': 'application/json; charset=utf-8' },
-            });
+            return failResponse('playlist-fetch-failed: 拉取播放列表失败');
         }
 
         return new Response(finalM3u8, {
